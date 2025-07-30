@@ -6,8 +6,6 @@ const { generateToken } = require("../utils/generateToken");
 const redis = require("../utils/redis"); // Import Redis client
 const prisma = new PrismaClient();
 
-// Temporary in-memory storage for OTP codes (development only)
-const otpStorage = new Map();
 
 // 📧 Send email verification code
 exports.sendVerificationCode = async (req, res) => {
@@ -32,7 +30,8 @@ exports.sendVerificationCode = async (req, res) => {
         code: code, // Include code in response for testing
       });
     }
-
+    else {
+      console.log("Production mode: Sending code via email");
     // FOR PRODUCTION: Send email
     try {
       const transporter = nodemailer.createTransport({
@@ -46,7 +45,7 @@ exports.sendVerificationCode = async (req, res) => {
       const mailOptions = {
         from: `Mitttal and Co. <${process.env.EMAIL_USER}>`,
         to: email,
-        subject: "Your Verification Code - Mitttal and Co.",
+        subject: `Your Verification Code is ${code} - Mitttal and Co.`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <div style="background-color: #2e3f47; padding: 30px; border-radius: 10px; text-align: center;">
@@ -82,6 +81,7 @@ exports.sendVerificationCode = async (req, res) => {
         .status(500)
         .json({ message: "Failed to send verification code via email" });
     }
+  }
   } catch (error) {
     console.error("General error in sendVerificationCode:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -126,8 +126,9 @@ exports.register = async (req, res) => {
     // OTP is valid, remove from Redis
     await redis.del(`otp:${email}`);
 
+    const salt = await bcrypt.genSalt(10);
     // Hash password and create user
-    const hashed = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, salt);
     const user = await prisma.user.create({
       data: { name, phone, email, password: hashed, city },
     });
