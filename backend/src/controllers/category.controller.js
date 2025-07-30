@@ -1,8 +1,8 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const cloudinary =
-  require("../utils/cloudinary").default || require("../utils/cloudinary");
-
+  require("../utils/cloudinary.js")
+console.log("Cloudinary config:", cloudinary.config());
 exports.getAllCategories = async (req, res) => {
   const categories = await prisma.category.findMany();
 
@@ -46,20 +46,22 @@ exports.getCategoryById = async (req, res) => {
 
   res.json(transformedCategory);
 };
-exports.createCategory = async (req, res) => {
+exports.  createCategory = async (req, res) => {
   const { name, description, imageUrl, image_url } = req.body;
   let finalImageUrl = image_url || imageUrl;
   try {
     // If file is uploaded, upload to Cloudinary
     if (req.file && req.file.buffer) {
-      const result = await cloudinary.uploader
-        .upload_stream({ resource_type: "image" }, (error, result) => {
-          if (error) throw error;
-          return result;
-        })
-        .end(req.file.buffer);
-      finalImageUrl = result.secure_url;
+      finalImageUrl = await new Promise((resolve, reject) => {
+        const result =  cloudinary.uploader
+          .upload_stream({ resource_type: "image" }, (error, result) => {
+            if (error) throw error;
+            resolve(result.secure_url);
+          })
+          .end(req.file.buffer);
+      });
     }
+    console.log("Final image URL:", finalImageUrl);
     const category = await prisma.category.create({
       data: {
         name,
@@ -71,7 +73,7 @@ exports.createCategory = async (req, res) => {
       ...category,
       image_url: category.imageUrl,
     };
-    res.status(201).json(transformedCategory);
+    res.status(201).json({ success: true, category: transformedCategory });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error creating category" });

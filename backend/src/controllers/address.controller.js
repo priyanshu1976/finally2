@@ -5,13 +5,20 @@ const prisma = new PrismaClient();
 exports.addAddress = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { label, house, street, landmark, city, state, country, postalCode } =
-      req.body;
+    const {
+      label,
+      house,
+      street,
+      landmark,
+      address1,
+      city,
 
-    if (!house || !street || !city) {
+    } = req.body;
+
+    if (!house || !street || !city || !label) {
       return res
         .status(400)
-        .json({ message: "House, street, and city are required" });
+        .json({ message: "House, street, city, and label are required" });
     }
 
     const address = await prisma.address.create({
@@ -21,10 +28,9 @@ exports.addAddress = async (req, res) => {
         house,
         street,
         landmark,
-        city,
-        state,
-        country,
-        postalCode,
+        address1,
+        city
+    
       },
     });
     res.status(201).json({ message: "Address added", address });
@@ -53,8 +59,14 @@ exports.updateAddress = async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
-    const { label, house, street, landmark, city, state, country, postalCode } =
-      req.body;
+    const {
+      label,
+      house,
+      street,
+      landmark,
+      address1,
+      city
+    } = req.body;
 
     // Only allow update if address belongs to user
     const address = await prisma.address.findUnique({
@@ -71,10 +83,8 @@ exports.updateAddress = async (req, res) => {
         house,
         street,
         landmark,
-        city,
-        state,
-        country,
-        postalCode,
+        address1,
+        city
       },
     });
     res.json({ message: "Address updated", address: updated });
