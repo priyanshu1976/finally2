@@ -5,6 +5,7 @@ const { PrismaClient } = require('@prisma/client')
 const { generateToken } = require('../utils/generateToken')
 const redis = require('../utils/redis') // Import Redis client
 const prisma = new PrismaClient()
+const dotenv = require('dotenv').config()
 
 // 📧 Send email verification code
 exports.sendVerificationCode = async (req, res) => {
@@ -20,7 +21,7 @@ exports.sendVerificationCode = async (req, res) => {
     // Store OTP in Redis with 10 minute expiry
 
     await redis.set(`otp:${email}`, code, 'EX', 10 * 60) // Store OTP with 10 min expiry
-
+    console.log(`Stored OTP for ${email} in Redis`)
     // FOR DEVELOPMENT: Return the code directly in response for testing
     if (process.env.NODE_ENV === 'development') {
       console.log('Production mode: Sending code via email')
