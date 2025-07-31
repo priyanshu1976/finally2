@@ -1,8 +1,21 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  Dimensions,
+} from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  withSpring,
+} from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
 
@@ -36,22 +49,22 @@ export default function WelcomeScreen() {
   }, [user, isLoading]);
 
   const logoAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: logoScale.value }]
+    transform: [{ scale: logoScale.value }],
   }));
 
   const titleAnimatedStyle = useAnimatedStyle(() => ({
     opacity: titleOpacity.value,
-    transform: [{ translateY: withTiming(titleOpacity.value === 1 ? 0 : 30) }]
+    transform: [{ translateY: withTiming(titleOpacity.value === 1 ? 0 : 30) }],
   }));
 
   const buttonAnimatedStyle = useAnimatedStyle(() => ({
     opacity: buttonOpacity.value,
-    transform: [{ translateY: withTiming(buttonOpacity.value === 1 ? 0 : 50) }]
+    transform: [{ translateY: withTiming(buttonOpacity.value === 1 ? 0 : 50) }],
   }));
 
   const floatingAnimatedStyle = useAnimatedStyle(() => ({
     opacity: floatingElements.value,
-    transform: [{ scale: floatingElements.value }]
+    transform: [{ scale: floatingElements.value }],
   }));
 
   // Show loading screen while checking authentication
@@ -86,8 +99,10 @@ export default function WelcomeScreen() {
       <View style={styles.content}>
         <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
           <View style={styles.logoBackground}>
-            <Image 
-              source={{ uri: 'https://images.pexels.com/photos/6585751/pexels-photo-6585751.jpeg?auto=compress&cs=tinysrgb&w=200' }}
+            <Image
+              source={{
+                uri: 'https://images.pexels.com/photos/6585751/pexels-photo-6585751.jpeg?auto=compress&cs=tinysrgb&w=200',
+              }}
               style={styles.logoImage}
               resizeMode="cover"
             />
@@ -95,19 +110,20 @@ export default function WelcomeScreen() {
         </Animated.View>
 
         <Animated.View style={[styles.titleContainer, titleAnimatedStyle]}>
-          <Text style={styles.title}>Mitttal and Co.</Text>
+          <Text style={styles.title}>Verma & Company</Text>
           <View style={styles.subtitleContainer}>
             <View style={styles.accentLine} />
             <Text style={styles.subtitle}>Premium Sanitary Solutions</Text>
             <View style={styles.accentLine} />
           </View>
           <Text style={styles.description}>
-            Your trusted partner for quality bathroom fittings, kitchen accessories, and plumbing supplies
+            Your trusted partner for quality bathroom fittings, kitchen
+            accessories, and plumbing supplies
           </Text>
         </Animated.View>
 
         <Animated.View style={[styles.buttonContainer, buttonAnimatedStyle]}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.loginButton}
             onPress={() => router.push('/auth/login')}
             activeOpacity={0.8}
@@ -115,7 +131,7 @@ export default function WelcomeScreen() {
             <Text style={styles.loginButtonText}>Sign In</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.signupButton}
             onPress={() => router.push('/auth/signup')}
             activeOpacity={0.8}

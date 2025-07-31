@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, MapPin, Edit } from 'lucide-react-native';
+import { ArrowLeft, Edit, Plus } from 'lucide-react-native';
 import * as SecureStore from 'expo-secure-store';
-import { api } from '@/services/api'; // <-- import api
-// If your api file is in a different location, adjust the path accordingly
+import { addressService } from '@/services/api'; // Use addressService for API calls
 
-// Add interceptors for token handling
+// Add interceptors for token handling (if not already globally set)
+import { api } from '@/services/api';
 api.interceptors.request.use(
   async (config) => {
-    // Get token from storage
     const token = await SecureStore.getItemAsync('token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
@@ -29,93 +28,192 @@ api.interceptors.request.use(
     return Promise.reject(new Error(error));
   }
 );
+
 interface Address {
-  id: string;
-  name: string;
-  address: string;
+  id: number;
+  label: string;
+  house: string;
+  street: string;
   city: string;
-  phone: string;
+  landmark?: string;
+  address1?: string;
 }
 
-export default function AddressBookScreen() {
-  const [address, setAddress] = useState<Address>({
-    id: '1',
-    name: 'Home',
-    address: '123 Main Street, Sector 22',
-    city: 'Chandigarh',
-    phone: '+91 98765 43210',
-  });
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    address: '',
-    city: '',
-    phone: '',
-  });
+const emptyForm = {
+  label: '',
+  house: '',
+  street: '',
+  city: '',
+  landmark: '',
+  address1: '',
+};
 
-  const handleEditAddress = () => {
-    setFormData({
-      name: address.name,
-      address: address.address,
-      city: address.city,
-      phone: address.phone,
-    });
-    setIsEditing(true);
+export default function AddressBookScreen() {
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [formData, setFormData] = useState({ ...emptyForm });
+  const [editId, setEditId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch addresses from API
+  const fetchAddresses = async () => {
+    setLoading(true);
+    try {
+      const res = await addressService.getAddresses();
+      if (res.success && Array.isArray(res.data)) {
+        setAddresses(res.data);
+      } else if (res.data && Array.isArray((res.data as any).addresses)) {
+        setAddresses((res.data as any).addresses);
+      } else {
+        setAddresses([]);
+      }
+    } catch (error: any) {
+      Alert.alert(
+        'Error',
+        error?.response?.data?.message || 'Failed to fetch addresses'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUpdateAddress = async () => {
+  useEffect(() => {
+    fetchAddresses();
+  }, []);
+
+  // Handle add new address
+  const handleAddAddress = async () => {
     if (
-      !formData.name ||
-      !formData.address ||
-      !formData.city ||
-      !formData.phone
+      !formData.label ||
+      !formData.house ||
+      !formData.street ||
+      !formData.city
     ) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
-
     try {
-      // Call backend API to update address
-      // Assumes your backend expects { name, address, city, phone }
-      const response = await api.put('api/auth/address', {
-        name: formData.name,
-        address: formData.address,
+      setLoading(true);
+      const res = await addressService.addAddress({
+        label: formData.label,
+        house: formData.house,
+        street: formData.street,
         city: formData.city,
-        phone: formData.phone,
+        landmark: formData.landmark,
+        address1: formData.address1,
       });
+      if (res.success && res.data) {
+        setAddresses((prev) => [...prev, res.data]);
+        setFormData({ ...emptyForm });
+        setIsAdding(false);
+        Alert.alert('Success', 'Address added successfully');
+      } else {
+        console.log('this ran 1');
+        console.log(res);
+        throw new Error(res.error || 'Failed to add address');
+      }
+    } catch (error: any) {
+      console.log(error.message, 'this ran');
+      Alert.alert('error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // Optionally, you can use the response data to update the address state
-      setAddress((prev) => ({
-        ...prev,
-        ...formData,
-      }));
+  // Handle edit address
+  const handleEditAddress = (address: Address) => {
+    setFormData({
+      label: address.label,
+      house: address.house,
+      street: address.street,
+      city: address.city,
+      landmark: address.landmark || '',
+      address1: address.address1 || '',
+    });
+    setEditId(address.id);
+    setIsEditing(true);
+    setIsAdding(false);
+  };
 
-      setFormData({ name: '', address: '', city: '', phone: '' });
-      setIsEditing(false);
-      Alert.alert('Success', 'Address updated successfully');
+  // Handle update address
+  const handleUpdateAddress = async () => {
+    if (
+      !formData.label ||
+      !formData.house ||
+      !formData.street ||
+      !formData.city
+    ) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+    if (editId === null) return;
+    try {
+      setLoading(true);
+      const res = await addressService.updateAddress(editId, {
+        label: formData.label,
+        house: formData.house,
+        street: formData.street,
+        city: formData.city,
+        landmark: formData.landmark,
+        address1: formData.address1,
+      });
+      if (res.success && res.data) {
+        setAddresses((prev) =>
+          prev.map((addr) => (addr.id === editId ? res.data : addr))
+        );
+        setFormData({ ...emptyForm });
+        setIsEditing(false);
+        setEditId(null);
+        Alert.alert('Success', 'Address updated successfully');
+      } else {
+        throw new Error(res.message || 'Failed to update address');
+      }
     } catch (error: any) {
       Alert.alert(
         'Error',
         error?.response?.data?.message || 'Failed to update address'
       );
+    } finally {
+      setLoading(false);
     }
   };
 
-  const renderAddressForm = () => (
+  // Address form (for add/edit)
+  const renderAddressForm = (mode: 'add' | 'edit') => (
     <View style={styles.formContainer}>
-      <Text style={styles.formTitle}>Edit Address</Text>
+      <Text style={styles.formTitle}>
+        {mode === 'add' ? 'Add Address' : 'Edit Address'}
+      </Text>
       <TextInput
         style={styles.input}
-        placeholder="Address Name (e.g., Home, Office)"
-        value={formData.name}
-        onChangeText={(text) => setFormData({ ...formData, name: text })}
+        placeholder="Label (e.g., Home, Office)"
+        value={formData.label}
+        onChangeText={(text) => setFormData({ ...formData, label: text })}
       />
       <TextInput
         style={styles.input}
-        placeholder="Full Address"
-        value={formData.address}
-        onChangeText={(text) => setFormData({ ...formData, address: text })}
-        multiline
+        placeholder="House / Flat / Apartment"
+        value={formData.house}
+        onChangeText={(text) => setFormData({ ...formData, house: text })}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Street / Area"
+        value={formData.street}
+        onChangeText={(text) => setFormData({ ...formData, street: text })}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Landmark (optional)"
+        value={formData.landmark}
+        onChangeText={(text) => setFormData({ ...formData, landmark: text })}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Additional Address Info (optional)"
+        value={formData.address1}
+        onChangeText={(text) => setFormData({ ...formData, address1: text })}
       />
       <TextInput
         style={styles.input}
@@ -123,51 +221,57 @@ export default function AddressBookScreen() {
         value={formData.city}
         onChangeText={(text) => setFormData({ ...formData, city: text })}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Phone Number"
-        value={formData.phone}
-        onChangeText={(text) => setFormData({ ...formData, phone: text })}
-        keyboardType="phone-pad"
-      />
       <View style={styles.formButtons}>
         <TouchableOpacity
           style={styles.cancelButton}
           onPress={() => {
             setIsEditing(false);
-            setFormData({ name: '', address: '', city: '', phone: '' });
+            setIsAdding(false);
+            setFormData({ ...emptyForm });
+            setEditId(null);
           }}
         >
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.saveButton}
-          onPress={handleUpdateAddress}
+          onPress={mode === 'add' ? handleAddAddress : handleUpdateAddress}
+          disabled={loading}
         >
-          <Text style={styles.saveButtonText}>Save</Text>
+          <Text style={styles.saveButtonText}>
+            {mode === 'add' ? 'Add' : 'Save'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  const renderAddress = () => (
-    <View style={styles.addressCard}>
+  // Render a single address card
+  const renderAddress = (address: Address) => (
+    <View style={styles.addressCard} key={address.id}>
       <View style={styles.addressHeader}>
         <View style={styles.addressInfo}>
-          <Text style={styles.addressName}>{address.name}</Text>
+          <Text style={styles.addressName}>{address.label}</Text>
         </View>
         <View style={styles.addressActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={handleEditAddress}
+            onPress={() => handleEditAddress(address)}
           >
             <Edit size={16} color="#c6aa55" />
           </TouchableOpacity>
         </View>
       </View>
-      <Text style={styles.addressText}>{address.address}</Text>
+      <Text style={styles.addressText}>
+        {address.house}, {address.street}
+      </Text>
+      {address.landmark ? (
+        <Text style={styles.addressText}>Landmark: {address.landmark}</Text>
+      ) : null}
+      {address.address1 ? (
+        <Text style={styles.addressText}>{address.address1}</Text>
+      ) : null}
       <Text style={styles.addressText}>{address.city}</Text>
-      <Text style={styles.addressPhone}>{address.phone}</Text>
     </View>
   );
 
@@ -186,13 +290,83 @@ export default function AddressBookScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Edit Form */}
-        {isEditing && renderAddressForm()}
+        {/* Add/Edit Form */}
+        {isEditing && renderAddressForm('edit')}
+        {isAdding && renderAddressForm('add')}
 
         {/* Address Display */}
         <View style={styles.addressesSection}>
-          <Text style={styles.sectionTitle}>Your Address</Text>
-          {renderAddress()}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Text style={styles.sectionTitle}>Your Addresses</Text>
+            {!isEditing && !isAdding && (
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#c6aa55',
+                  borderRadius: 8,
+                  padding: 8,
+                }}
+                onPress={() => {
+                  setIsAdding(true);
+                  setIsEditing(false);
+                  setFormData({ ...emptyForm });
+                  setEditId(null);
+                }}
+              >
+                <Plus size={16} color="#fff" />
+                <Text
+                  style={{
+                    color: '#fff',
+                    marginLeft: 4,
+                    fontFamily: 'Inter-SemiBold',
+                  }}
+                >
+                  Add
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {addresses.length === 0 && !loading && (
+            <Text style={{ color: '#9b9591', marginTop: 16 }}>
+              No addresses found.
+            </Text>
+          )}
+          {addresses.map((address) => (
+            <View style={styles.addressCard} key={address.id}>
+              <View style={styles.addressHeader}>
+                <View style={styles.addressInfo}>
+                  <Text style={styles.addressName}>{address.label}</Text>
+                </View>
+                <View style={styles.addressActions}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => handleEditAddress(address)}
+                  >
+                    <Edit size={16} color="#c6aa55" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <Text style={styles.addressText}>
+                {address.house}, {address.street}
+              </Text>
+              {address.landmark ? (
+                <Text style={styles.addressText}>
+                  Landmark: {address.landmark}
+                </Text>
+              ) : null}
+              {address.address1 ? (
+                <Text style={styles.addressText}>{address.address1}</Text>
+              ) : null}
+              <Text style={styles.addressText}>{address.city}</Text>
+            </View>
+          ))}
         </View>
       </ScrollView>
     </SafeAreaView>

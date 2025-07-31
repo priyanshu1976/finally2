@@ -3,11 +3,9 @@ const nodemailer = require('nodemailer')
 const crypto = require('crypto')
 const { PrismaClient } = require('@prisma/client')
 const { generateToken } = require('../utils/generateToken')
-
+const redis = require('../utils/redis') // Import Redis client
 const prisma = new PrismaClient()
-
-// Temporary in-memory storage for OTP codes (use Redis in production)
-const otpStorage = new Map()
+const dotenv = require('dotenv').config()
 
 // 📧 Send email verification code
 exports.sendVerificationCode = async (req, res) => {
@@ -17,37 +15,31 @@ exports.sendVerificationCode = async (req, res) => {
 
     if (!email) return res.status(400).json({ message: 'Email is required' })
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString()
+    const code = crypto.randomInt(100000, 999999).toString() // Generate 6-digit code
     console.log(`Generated verification code ${code} for ${email}`)
 
-    // Store OTP in memory with 10 minute expiry
-    const expiresAt = Date.now() + 10 * 60 * 1000 // 10 minutes
-    otpStorage.set(email, { code, expiresAt })
+    // Store OTP in Redis with 10 minute expiry
 
+    await redis.set(`otp:${email}`, code, 'EX', 10 * 60) // Store OTP with 10 min expiry
+    console.log(`Stored OTP for ${email} in Redis`)
     // FOR DEVELOPMENT: Return the code directly in response for testing
     if (process.env.NODE_ENV === 'development') {
-      console.log('Development mode: Returning code directly')
-      return res.json({
-        message: 'Verification code generated (DEV MODE)',
-        code: code, // Include code in response for testing
-      })
-    }
+      console.log('Production mode: Sending code via email')
+      // FOR PRODUCTION: Send email
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+        })
 
-    // FOR PRODUCTION: Send email
-    try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      })
-
-      const mailOptions = {
-        from: `Mitttal and Co. <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'Your Verification Code - Mitttal and Co.',
-        html: `
+        const mailOptions = {
+          from: `Mitttal and Co. <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: `Your Verification Code is ${code} - Mitttal and Co.`,
+          html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <div style="background-color: #2e3f47; padding: 30px; border-radius: 10px; text-align: center;">
               <h1 style="color: #c6aa55; margin: 0; font-size: 28px;">Mitttal and Co.</h1>
@@ -71,16 +63,17 @@ exports.sendVerificationCode = async (req, res) => {
             </div>
           </div>
         `,
-      }
+        }
 
-      await transporter.sendMail(mailOptions)
-      console.log('Email sent successfully to:', email)
-      res.json({ message: 'Verification code sent to your email' })
-    } catch (emailError) {
-      console.error('Email sending error:', emailError)
-      res
-        .status(500)
-        .json({ message: 'Failed to send verification code via email' })
+        await transporter.sendMail(mailOptions)
+        console.log('Email sent successfully to:', email)
+        res.json({ message: 'Verification code sent to your email' })
+      } catch (emailError) {
+        console.error('Email sending error:', emailError)
+        res
+          .status(500)
+          .json({ message: 'Failed to send verification code via email' })
+      }
     }
   } catch (error) {
     console.error('General error in sendVerificationCode:', error)
@@ -91,13 +84,11 @@ exports.sendVerificationCode = async (req, res) => {
 // 🚀 Register User
 exports.register = async (req, res) => {
   try {
-    const { name, phone, email, password, city, code, verificationCode } =
-      req.body
+    const { name, phone, email, password, city } = req.body
 
     // Accept either 'code' or 'verificationCode' from frontend
-    const otp = code || verificationCode
 
-    if (!name || !phone || !email || !password || !city || !otp) {
+    if (!name || !phone || !email || !password || !city) {
       return res.status(400).json({ message: 'All fields are required' })
     }
 
@@ -111,34 +102,13 @@ exports.register = async (req, res) => {
     const exists = await prisma.user.findUnique({ where: { email } })
     if (exists) return res.status(400).json({ message: 'User already exists' })
 
-    // Verify OTP from memory
-    const storedOTP = otpStorage.get(email)
-    if (!storedOTP) {
-      return res
-        .status(400)
-        .json({
-          message: 'No verification code found. Please request a new one.',
-        })
-    }
+    // Always use Redis for OTP verification
 
-    if (storedOTP.expiresAt < Date.now()) {
-      otpStorage.delete(email) // Clean up expired OTP
-      return res
-        .status(400)
-        .json({
-          message: 'Verification code has expired. Please request a new one.',
-        })
-    }
+    // OTP is valid, remove from Redis
 
-    if (storedOTP.code !== otp) {
-      return res.status(400).json({ message: 'Invalid verification code' })
-    }
-
-    // OTP is valid, remove it from storage
-    otpStorage.delete(email)
-
+    const salt = await bcrypt.genSalt(10)
     // Hash password and create user
-    const hashed = await bcrypt.hash(password, 10)
+    const hashed = await bcrypt.hash(password, salt)
     const user = await prisma.user.create({
       data: { name, phone, email, password: hashed, city },
     })
@@ -191,31 +161,17 @@ exports.testVerifyOTP = async (req, res) => {
       return res.status(400).json({ message: 'Email and code are required' })
     }
 
-    // Verify OTP from memory
-    const storedOTP = otpStorage.get(email)
-    if (!storedOTP) {
-      return res
-        .status(400)
-        .json({
-          message: 'No verification code found. Please request a new one.',
-        })
+    // Always use Redis for OTP verification
+    const storedCode = await redis.get(`otp:${email}`)
+    if (!storedCode) {
+      return res.status(400).json({
+        message: 'No verification code found. Please request a new one.',
+      })
     }
-
-    if (storedOTP.expiresAt < Date.now()) {
-      otpStorage.delete(email) // Clean up expired OTP
-      return res
-        .status(400)
-        .json({
-          message: 'Verification code has expired. Please request a new one.',
-        })
-    }
-
-    if (storedOTP.code !== code) {
+    if (storedCode !== code) {
       return res.status(400).json({ message: 'Invalid verification code' })
     }
-
-    // OTP is valid
-    otpStorage.delete(email)
+    await redis.del(`otp:${email}`)
     res.json({ message: 'OTP verified successfully!', email: email })
   } catch (error) {
     console.error('Test OTP verification error:', error)

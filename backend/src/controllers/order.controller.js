@@ -4,15 +4,19 @@ const prisma = new PrismaClient()
 // 🧾 Create order from cart OR from direct order data
 exports.createOrder = async (req, res) => {
   const userId = req.user.id
+  // Accept addressId from frontend
+  const { total_amount, addressId, payment_method, order_items, user_id } =
+    req.body
 
-  // Check if frontend is sending order data directly
-  const {
-    total_amount,
-    delivery_address,
-    payment_method,
-    order_items,
-    user_id,
-  } = req.body
+  // Validate addressId if provided
+  if (addressId) {
+    const address = await prisma.address.findUnique({
+      where: { id: addressId },
+    })
+    if (!address || address.userId !== userId) {
+      return res.status(400).json({ message: 'Invalid address selected' })
+    }
+  }
 
   if (total_amount && order_items) {
     // Frontend is sending order data directly (from checkout)
@@ -28,7 +32,7 @@ exports.createOrder = async (req, res) => {
           userId: user_id || userId,
           totalPrice: parseFloat(total_amount),
           totalAmount: parseFloat(total_amount),
-          deliveryAddress: delivery_address,
+          addressId: addressId || null,
           paymentMethod: payment_method,
           items: {
             create: orderItemsData,
@@ -45,7 +49,7 @@ exports.createOrder = async (req, res) => {
       const transformedOrder = {
         ...order,
         total_amount: order.totalAmount || order.totalPrice,
-        delivery_address: order.deliveryAddress,
+        address_id: order.addressId,
         payment_method: order.paymentMethod,
       }
 
@@ -85,6 +89,7 @@ exports.createOrder = async (req, res) => {
         userId,
         totalPrice,
         totalAmount: totalPrice,
+        addressId: addressId || null,
         items: {
           create: orderItemsData,
         },
@@ -103,8 +108,7 @@ exports.createOrder = async (req, res) => {
     const transformedOrder = {
       ...order,
       total_amount: order.totalAmount || order.totalPrice,
-      delivery_address: order.deliveryAddress,
-      payment_method: order.paymentMethod,
+      address_id: order.addressId,
     }
 
     res.status(201).json(transformedOrder)
@@ -128,6 +132,8 @@ exports.getMyOrders = async (req, res) => {
     },
     orderBy: { createdAt: 'desc' },
   })
+
+  console.log(orders, 'this is the orders')
 
   // Transform response to match frontend expectations
   const transformedOrders = orders.map((order) => ({
