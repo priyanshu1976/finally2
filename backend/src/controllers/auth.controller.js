@@ -84,13 +84,11 @@ exports.sendVerificationCode = async (req, res) => {
 // 🚀 Register User
 exports.register = async (req, res) => {
   try {
-    const { name, phone, email, password, city, code, verificationCode } =
-      req.body
+    const { name, phone, email, password, city } = req.body
 
     // Accept either 'code' or 'verificationCode' from frontend
-    const otp = code || verificationCode
 
-    if (!name || !phone || !email || !password || !city || !otp) {
+    if (!name || !phone || !email || !password || !city) {
       return res.status(400).json({ message: 'All fields are required' })
     }
 
@@ -105,17 +103,8 @@ exports.register = async (req, res) => {
     if (exists) return res.status(400).json({ message: 'User already exists' })
 
     // Always use Redis for OTP verification
-    const storedCode = await redis.get(`otp:${email}`)
-    if (!storedCode) {
-      return res.status(400).json({
-        message: 'No verification code found. Please request a new one.',
-      })
-    }
-    if (storedCode !== otp) {
-      return res.status(400).json({ message: 'Invalid verification code' })
-    }
+
     // OTP is valid, remove from Redis
-    await redis.del(`otp:${email}`)
 
     const salt = await bcrypt.genSalt(10)
     // Hash password and create user

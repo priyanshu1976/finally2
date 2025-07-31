@@ -4,6 +4,7 @@ import {
   Category,
   Product,
   Order,
+  Address,
   AuthResponse,
   ApiResponse,
   PaginatedResponse,
@@ -11,7 +12,7 @@ import {
 import * as SecureStore from 'expo-secure-store';
 
 // Create axios instance with base URL and default headers
-const API_BASE_URL = process.env.API_BASE_URL || 'http://172.16.221.137:3000/';
+const API_BASE_URL = process.env.API_BASE_URL || 'http://172.16.218.29:3000/';
 
 console.log(API_BASE_URL, 'this is the baseurl');
 
@@ -321,5 +322,43 @@ export const adminService = {
 
   async getDashboardStats(): Promise<ApiResponse<any>> {
     return formatResponse<any>(api.get('/api/admin/dashboard/stats'));
+  },
+};
+
+// Address service for managing user addresses
+export const addressService = {
+  async getAddresses(): Promise<ApiResponse<Address[]>> {
+    return formatResponse<Address[]>(api.get('/api/addresses'));
+  },
+
+  async addAddress(addressData: {
+    label: string;
+    house: string;
+    street: string;
+    city: string;
+    landmark?: string;
+    address1?: string;
+  }): Promise<ApiResponse<Address>> {
+    return formatResponse<Address>(api.post('/api/addresses', addressData));
+  },
+
+  async updateAddress(
+    id: number,
+    addressData: {
+      label: string;
+      house: string;
+      street: string;
+      city: string;
+      landmark?: string;
+      address1?: string;
+    }
+  ): Promise<ApiResponse<Address>> {
+    return formatResponse<Address>(
+      api.put(`/api/addresses/${id}`, addressData)
+    );
+  },
+
+  async deleteAddress(id: number): Promise<ApiResponse<null>> {
+    return formatResponse<null>(api.delete(`/api/addresses/${id}`));
   },
 };

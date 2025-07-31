@@ -1,6 +1,7 @@
 export interface User {
   id: number;
   name: string;
+  full_name?: string; // Add this for compatibility
   email: string;
   password?: string;
   phone: string;
@@ -86,4 +87,16 @@ export interface PaginatedResponse<T> {
     total: number;
     totalPages: number;
   };
+}
+
+export interface Address {
+  id: number;
+  userId: number;
+  label: string;
+  house: string;
+  street: string;
+  city: string;
+  landmark?: string;
+  address1?: string;
+  createdAt: string;
 }

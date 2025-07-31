@@ -136,7 +136,7 @@ export default function PrivacyPolicyScreen() {
         <View style={styles.introSection}>
           <Text style={styles.introTitle}>Your Privacy Matters</Text>
           <Text style={styles.introText}>
-            At Mittal and Co., we are committed to protecting your privacy and
+            At Verma & Company, we are committed to protecting your privacy and
             ensuring the security of your personal information. This privacy
             policy explains how we collect, use, and safeguard your information
             when you use our mobile application and services.
@@ -149,7 +149,7 @@ export default function PrivacyPolicyScreen() {
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Thank you for trusting Mittal and Co. with your information.
+            Thank you for trusting Verma & Company with your information.
           </Text>
         </View>
       </ScrollView>

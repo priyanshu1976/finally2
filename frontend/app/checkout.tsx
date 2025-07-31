@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,26 +7,47 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, MapPin, CreditCard, Smartphone, Banknote } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  MapPin,
+  CreditCard,
+  Smartphone,
+  Banknote,
+  Plus,
+  Edit,
+  Trash2,
+} from 'lucide-react-native';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { orderService } from '@/services/api';
+import { orderService, addressService } from '@/services/api';
+import { Address } from '@/types/api';
 
 export default function CheckoutScreen() {
   const { items, getTotalPrice, clearCart } = useCart();
   const { user } = useAuth();
   const [selectedPayment, setSelectedPayment] = useState('upi');
   const [isLoading, setIsLoading] = useState(false);
-  const [address, setAddress] = useState({
-    name: user?.full_name || 'John Doe',
-    phone: user?.phone || '+91 98765 43210',
-    street: '123 Main Street',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    pincode: '400001'
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showAddAddressModal, setShowAddAddressModal] = useState(false);
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
+  const [isSubmittingAddress, setIsSubmittingAddress] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+
+  // Address form state
+  const [addressForm, setAddressForm] = useState({
+    label: '',
+    house: '',
+    street: '',
+    city: '',
+    landmark: '',
+    address1: '',
   });
 
   const subtotal = getTotalPrice();
@@ -55,21 +76,161 @@ export default function CheckoutScreen() {
     },
   ];
 
+  // Load addresses on component mount
+  useEffect(() => {
+    loadAddresses();
+  }, []);
+
+  const loadAddresses = async () => {
+    if (!user) return;
+
+    setIsLoadingAddresses(true);
+    try {
+      const response = await addressService.getAddresses();
+      console.log(response.data, 'this is the get address response');
+      if (response.success && response.data) {
+        //@ts-ignore
+        setAddresses(response.data.addresses);
+        // Auto-select first address if available
+        if (response.data.length > 0 && !selectedAddress) {
+          setSelectedAddress(response.data[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading addresses:', error);
+    } finally {
+      setIsLoadingAddresses(false);
+    }
+  };
+
+  const resetAddressForm = () => {
+    setAddressForm({
+      label: '',
+      house: '',
+      street: '',
+      city: '',
+      landmark: '',
+      address1: '',
+    });
+    setEditingAddress(null);
+  };
+
+  const handleAddAddress = () => {
+    resetAddressForm();
+    setShowAddAddressModal(true);
+  };
+
+  const handleEditAddress = (address: Address) => {
+    setAddressForm({
+      label: address.label,
+      house: address.house,
+      street: address.street,
+      city: address.city,
+      landmark: address.landmark || '',
+      address1: address.address1 || '',
+    });
+    setEditingAddress(address);
+    setShowAddAddressModal(true);
+  };
+
+  const handleDeleteAddress = async (addressId: number) => {
+    Alert.alert(
+      'Delete Address',
+      'Are you sure you want to delete this address?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await addressService.deleteAddress(addressId);
+              if (response.success) {
+                await loadAddresses();
+                if (selectedAddress?.id === addressId) {
+                  setSelectedAddress(null);
+                }
+              } else {
+                Alert.alert(
+                  'Error',
+                  response.error || 'Failed to delete address'
+                );
+              }
+            } catch (error) {
+              console.error('Error deleting address:', error);
+              Alert.alert('Error', 'Failed to delete address');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSubmitAddress = async () => {
+    if (
+      !addressForm.label ||
+      !addressForm.house ||
+      !addressForm.street ||
+      !addressForm.city
+    ) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    setIsSubmittingAddress(true);
+    try {
+      let response;
+      if (editingAddress) {
+        response = await addressService.updateAddress(
+          editingAddress.id,
+          addressForm
+        );
+      } else {
+        response = await addressService.addAddress(addressForm);
+      }
+
+      if (response.success && response.data) {
+        await loadAddresses();
+        setShowAddAddressModal(false);
+        resetAddressForm();
+        if (!editingAddress) {
+          setSelectedAddress(response.data);
+        }
+      } else {
+        Alert.alert('Error', response.error || 'Failed to save address');
+      }
+    } catch (error) {
+      console.error('Error saving address:', error);
+      Alert.alert('Error', 'Failed to save address');
+    } finally {
+      setIsSubmittingAddress(false);
+    }
+  };
+
   const handlePlaceOrder = async () => {
     if (!user) {
       Alert.alert('Error', 'Please login to place an order');
       return;
     }
 
+    if (!selectedAddress) {
+      Alert.alert('Error', 'Please select a delivery address');
+      return;
+    }
+
     setIsLoading(true);
-    
+
     try {
       const orderData = {
         user_id: user.id,
         total_amount: total,
-        delivery_address: `${address.name}, ${address.phone}, ${address.street}, ${address.city}, ${address.state} - ${address.pincode}`,
+        delivery_address: `${selectedAddress.label}, ${
+          selectedAddress.house
+        }, ${selectedAddress.street}, ${selectedAddress.city}${
+          selectedAddress.landmark ? `, ${selectedAddress.landmark}` : ''
+        }`,
         payment_method: selectedPayment,
-        order_items: items.map(item => ({
+        order_items: items.map((item) => ({
           product_id: item.id,
           quantity: item.quantity,
           price: item.price,
@@ -77,7 +238,7 @@ export default function CheckoutScreen() {
       };
 
       const response = await orderService.createOrder(orderData);
-      
+
       if (response.success) {
         clearCart();
         router.replace('/order-success');
@@ -91,6 +252,49 @@ export default function CheckoutScreen() {
       setIsLoading(false);
     }
   };
+
+  const renderAddressCard = (address: Address) => (
+    <TouchableOpacity
+      key={address.id}
+      style={[
+        styles.addressCard,
+        selectedAddress?.id === address.id && styles.selectedAddressCard,
+      ]}
+      onPress={() => setSelectedAddress(address)}
+    >
+      <View style={styles.addressHeader}>
+        <View style={styles.addressInfo}>
+          <Text style={styles.addressLabel}>{address.label}</Text>
+          <Text style={styles.addressText}>
+            {address.house}, {address.street}
+          </Text>
+          <Text style={styles.addressText}>
+            {address.city}
+            {address.landmark ? `, ${address.landmark}` : ''}
+          </Text>
+        </View>
+        <View style={styles.addressActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleEditAddress(address)}
+          >
+            <Edit size={16} color="#c6aa55" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleDeleteAddress(address.id)}
+          >
+            <Trash2 size={16} color="#e74c3c" />
+          </TouchableOpacity>
+        </View>
+      </View>
+      {selectedAddress?.id === address.id && (
+        <View style={styles.selectedIndicator}>
+          <Text style={styles.selectedText}>Selected</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -110,17 +314,34 @@ export default function CheckoutScreen() {
           <View style={styles.sectionHeader}>
             <MapPin size={20} color="#c6aa55" />
             <Text style={styles.sectionTitle}>Delivery Address</Text>
-          </View>
-          <View style={styles.addressCard}>
-            <Text style={styles.addressName}>{address.name}</Text>
-            <Text style={styles.addressPhone}>{address.phone}</Text>
-            <Text style={styles.addressText}>
-              {address.street}, {address.city}, {address.state} - {address.pincode}
-            </Text>
-            <TouchableOpacity style={styles.changeButton}>
-              <Text style={styles.changeButtonText}>Change Address</Text>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={handleAddAddress}
+            >
+              <Plus size={20} color="#c6aa55" />
             </TouchableOpacity>
           </View>
+
+          {isLoadingAddresses ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#c6aa55" />
+              <Text style={styles.loadingText}>Loading addresses...</Text>
+            </View>
+          ) : addresses.length > 0 ? (
+            <View style={styles.addressesContainer}>
+              {addresses.map(renderAddressCard)}
+            </View>
+          ) : (
+            <View style={styles.emptyAddressContainer}>
+              <Text style={styles.emptyAddressText}>No addresses found</Text>
+              <TouchableOpacity
+                style={styles.addAddressButton}
+                onPress={handleAddAddress}
+              >
+                <Text style={styles.addAddressButtonText}>Add Address</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Order Summary */}
@@ -149,27 +370,41 @@ export default function CheckoutScreen() {
                 key={method.id}
                 style={[
                   styles.paymentMethod,
-                  selectedPayment === method.id && styles.paymentMethodSelected
+                  selectedPayment === method.id && styles.paymentMethodSelected,
                 ]}
                 onPress={() => setSelectedPayment(method.id)}
               >
                 <View style={styles.paymentMethodLeft}>
-                  <View style={[
-                    styles.paymentIcon,
-                    selectedPayment === method.id && styles.paymentIconSelected
-                  ]}>
-                    <method.icon size={20} color={selectedPayment === method.id ? '#ffffff' : '#c6aa55'} />
+                  <View
+                    style={[
+                      styles.paymentIcon,
+                      selectedPayment === method.id &&
+                        styles.paymentIconSelected,
+                    ]}
+                  >
+                    <method.icon
+                      size={20}
+                      color={
+                        selectedPayment === method.id ? '#ffffff' : '#c6aa55'
+                      }
+                    />
                   </View>
                   <View style={styles.paymentText}>
                     <Text style={styles.paymentTitle}>{method.title}</Text>
-                    <Text style={styles.paymentSubtitle}>{method.subtitle}</Text>
+                    <Text style={styles.paymentSubtitle}>
+                      {method.subtitle}
+                    </Text>
                   </View>
                 </View>
-                <View style={[
-                  styles.radioButton,
-                  selectedPayment === method.id && styles.radioButtonSelected
-                ]}>
-                  {selectedPayment === method.id && <View style={styles.radioButtonInner} />}
+                <View
+                  style={[
+                    styles.radioButton,
+                    selectedPayment === method.id && styles.radioButtonSelected,
+                  ]}
+                >
+                  {selectedPayment === method.id && (
+                    <View style={styles.radioButtonInner} />
+                  )}
                 </View>
               </TouchableOpacity>
             ))}
@@ -214,15 +449,138 @@ export default function CheckoutScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.placeOrderButton, isLoading && styles.placeOrderButtonDisabled]}
+          style={[
+            styles.placeOrderButton,
+            isLoading && styles.placeOrderButtonDisabled,
+          ]}
           onPress={handlePlaceOrder}
-          disabled={isLoading}
+          disabled={isLoading || !selectedAddress}
         >
           <Text style={styles.placeOrderText}>
             {isLoading ? 'Placing Order...' : 'Place Order'}
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Add/Edit Address Modal */}
+      <Modal
+        visible={showAddAddressModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setShowAddAddressModal(false);
+                resetAddressForm();
+              }}
+            >
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>
+              {editingAddress ? 'Edit Address' : 'Add New Address'}
+            </Text>
+            <TouchableOpacity
+              onPress={handleSubmitAddress}
+              disabled={isSubmittingAddress}
+            >
+              <Text
+                style={[
+                  styles.saveButton,
+                  isSubmittingAddress && styles.saveButtonDisabled,
+                ]}
+              >
+                {isSubmittingAddress ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Label *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addressForm.label}
+                onChangeText={(text) =>
+                  setAddressForm({ ...addressForm, label: text })
+                }
+                placeholder="e.g., Home, Work"
+                placeholderTextColor="#9b9591"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>House/Flat Number *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addressForm.house}
+                onChangeText={(text) =>
+                  setAddressForm({ ...addressForm, house: text })
+                }
+                placeholder="e.g., 123, Flat 4A"
+                placeholderTextColor="#9b9591"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Street Address *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addressForm.street}
+                onChangeText={(text) =>
+                  setAddressForm({ ...addressForm, street: text })
+                }
+                placeholder="e.g., Main Street, Sector 15"
+                placeholderTextColor="#9b9591"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>City *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addressForm.city}
+                onChangeText={(text) =>
+                  setAddressForm({ ...addressForm, city: text })
+                }
+                placeholder="e.g., Mumbai"
+                placeholderTextColor="#9b9591"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Landmark (Optional)</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addressForm.landmark}
+                onChangeText={(text) =>
+                  setAddressForm({ ...addressForm, landmark: text })
+                }
+                placeholder="e.g., Near Metro Station"
+                placeholderTextColor="#9b9591"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>
+                Additional Address (Optional)
+              </Text>
+              <TextInput
+                style={styles.formInput}
+                value={addressForm.address1}
+                onChangeText={(text) =>
+                  setAddressForm({ ...addressForm, address1: text })
+                }
+                placeholder="Any additional details"
+                placeholderTextColor="#9b9591"
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -281,37 +639,119 @@ const styles = StyleSheet.create({
     color: '#2e3f47',
     marginLeft: 8,
   },
+  addButton: {
+    marginLeft: 'auto',
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  loadingText: {
+    marginLeft: 10,
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    color: '#9b9591',
+  },
+  addressesContainer: {
+    gap: 12,
+  },
   addressCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#f3f3f3',
     padding: 16,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d3bfb3',
   },
-  addressName: {
+  selectedAddressCard: {
+    borderColor: '#c6aa55',
+    borderWidth: 2,
+    backgroundColor: 'rgba(198, 170, 85, 0.05)',
+  },
+  addressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flex: 1,
+  },
+  addressInfo: {
+    flex: 1,
+  },
+  addressLabel: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#2e3f47',
-    marginBottom: 4,
-  },
-  addressPhone: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#9b9591',
-    marginBottom: 8,
+    marginBottom: 2,
   },
   addressText: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#9b9591',
     lineHeight: 20,
-    marginBottom: 12,
   },
-  changeButton: {
-    alignSelf: 'flex-start',
+  addressActions: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  changeButtonText: {
+  actionButton: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  selectedIndicator: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#c6aa55',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+  },
+  selectedText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#ffffff',
+  },
+  emptyAddressContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  emptyAddressText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    color: '#9b9591',
+    marginBottom: 10,
+  },
+  addAddressButton: {
+    backgroundColor: '#c6aa55',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  addAddressButtonText: {
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-    color: '#c6aa55',
+    color: '#ffffff',
   },
   orderSummary: {
     backgroundColor: '#f3f3f3',
@@ -487,5 +927,60 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#ffffff',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f3f3f3',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 16,
+    backgroundColor: '#e7e0d0',
+  },
+  cancelButton: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#c6aa55',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+    color: '#2e3f47',
+  },
+  saveButton: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#c6aa55',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#2e3f47',
+    marginBottom: 8,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#d3bfb3',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#2e3f47',
+    minHeight: 50,
   },
 });

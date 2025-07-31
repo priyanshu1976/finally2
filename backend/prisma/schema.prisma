@@ -122,6 +122,7 @@ amount Float
 status String
 createdAt DateTime @default(now())
 }
+
 model Cart {
 id Int @id @default(autoincrement())
 userId Int @unique

@@ -7,11 +7,50 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  Image,
+  ActivityIndicator,
+  Platform,
+  Modal,
+  FlatList,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { productService, categoryService } from '@/services/api';
 import { Category } from '@/types/api';
+import * as ImagePicker from 'expo-image-picker';
+
+const CLOUDINARY_UPLOAD_PRESET = 'mittal'; // <-- Replace with your Cloudinary unsigned upload preset
+const CLOUDINARY_CLOUD_NAME = 'dqkxpmdsf'; // <-- Replace with your Cloudinary cloud name
+
+async function uploadImageToCloudinary(uri: string): Promise<string | null> {
+  try {
+    const formData = new FormData();
+    // @ts-ignore
+    formData.append('file', {
+      uri,
+      type: 'image/jpeg',
+      name: 'upload.jpg',
+    });
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+    const data = await response.json();
+    if (data.secure_url) {
+      return data.secure_url;
+    }
+    return null;
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    return null;
+  }
+}
 
 export default function AddProductScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -26,6 +65,11 @@ export default function AddProductScreen() {
     isBestseller: false,
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [localImage, setLocalImage] = useState<string | null>(null);
+
+  // For custom dropdown
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -39,6 +83,45 @@ export default function AddProductScreen() {
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
+    }
+  };
+
+  const pickImage = async () => {
+    // Ask for permission
+    let permissionResult = true;
+    // if (Platform.OS === 'ios') {
+    //   permissionResult =
+    //     await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // } else {
+    //   permissionResult =
+    //     await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // }
+    // if (permissionResult.status !== 'granted') {
+    //   Alert.alert(
+    //     'Permission Required',
+    //     'Camera roll permission is required to select an image from your device. Please enable it in your device settings.'
+    //   );
+    //   return;
+    // }
+    // Pick image
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const pickedUri = result.assets[0].uri;
+      setLocalImage(pickedUri);
+      setImageUploading(true);
+      const uploadedUrl = await uploadImageToCloudinary(pickedUri);
+      setImageUploading(false);
+      if (uploadedUrl) {
+        setFormData((prev) => ({ ...prev, imageUrl: uploadedUrl }));
+      } else {
+        Alert.alert('Upload failed', 'Could not upload image to Cloudinary.');
+      }
     }
   };
 
@@ -77,6 +160,12 @@ export default function AddProductScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Helper to get selected category name
+  const getSelectedCategoryName = () => {
+    const cat = categories.find((c) => c.id.toString() === formData.categoryId);
+    return cat ? cat.name : 'Select a category';
   };
 
   return (
@@ -134,47 +223,122 @@ export default function AddProductScreen() {
           </View>
         </View>
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Image URL</Text>
+          <Text style={styles.label}>Product Image</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity
+              style={styles.imagePickerButton}
+              onPress={pickImage}
+              disabled={imageUploading}
+            >
+              <Text style={styles.imagePickerButtonText}>
+                {imageUploading ? 'Uploading...' : 'Pick Image'}
+              </Text>
+            </TouchableOpacity>
+            {imageUploading && (
+              <ActivityIndicator size="small" color="#0066CC" />
+            )}
+            {formData.imageUrl ? (
+              <Image
+                source={{ uri: formData.imageUrl }}
+                style={styles.imagePreview}
+              />
+            ) : null}
+          </View>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { marginTop: 8 }]}
             value={formData.imageUrl}
             onChangeText={(text) =>
               setFormData((prev) => ({ ...prev, imageUrl: text }))
             }
             placeholder="https://example.com/image.jpg"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
         <View style={styles.row}>
           <View style={[styles.inputGroup, styles.halfWidth]}>
             <Text style={styles.label}>Category *</Text>
-            <View style={styles.pickerContainer}>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[
-                    styles.categoryOption,
-                    formData.categoryId === category.id.toString() &&
-                      styles.selectedCategory,
-                  ]}
-                  onPress={() =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      categoryId: category.id.toString(),
-                    }))
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.categoryOptionText,
-                      formData.categoryId === category.id.toString() &&
-                        styles.selectedCategoryText,
-                    ]}
-                  >
-                    {category.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* Custom dropdown instead of Picker */}
+            <Pressable
+              style={styles.customDropdown}
+              onPress={() => setCategoryModalVisible(true)}
+            >
+              <Text
+                style={{
+                  color: formData.categoryId ? '#1F2937' : '#9CA3AF',
+                  fontSize: 16,
+                  fontFamily: 'Inter-Regular',
+                }}
+              >
+                {getSelectedCategoryName()}
+              </Text>
+            </Pressable>
+            <Modal
+              visible={categoryModalVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setCategoryModalVisible(false)}
+            >
+              <Pressable
+                style={styles.modalOverlay}
+                onPress={() => setCategoryModalVisible(false)}
+              >
+                <View style={styles.modalContent}>
+                  <FlatList
+                    data={categories}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        style={styles.modalItem}
+                        onPress={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            categoryId: item.id.toString(),
+                          }));
+                          setCategoryModalVisible(false);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.modalItemText,
+                            formData.categoryId === item.id.toString() && {
+                              fontWeight: 'bold',
+                              color: '#0066CC',
+                            },
+                          ]}
+                        >
+                          {item.name}
+                        </Text>
+                      </Pressable>
+                    )}
+                    ListHeaderComponent={
+                      <Pressable
+                        style={styles.modalItem}
+                        onPress={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            categoryId: '',
+                          }));
+                          setCategoryModalVisible(false);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.modalItemText,
+                            !formData.categoryId && {
+                              fontWeight: 'bold',
+                              color: '#0066CC',
+                            },
+                          ]}
+                        >
+                          Select a category
+                        </Text>
+                      </Pressable>
+                    }
+                  />
+                </View>
+              </Pressable>
+            </Modal>
           </View>
           <View style={[styles.inputGroup, styles.halfWidth]}>
             <View style={styles.checkboxContainer}>
@@ -283,29 +447,41 @@ const styles = StyleSheet.create({
   halfWidth: {
     flex: 1,
   },
-  pickerContainer: {
+  pickerWrapper: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
     borderRadius: 8,
-    maxHeight: 120,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
   },
-  categoryOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+  picker: {
+    width: '100%',
+    height: 48,
   },
-  selectedCategory: {
-    backgroundColor: '#E6F2FF',
-  },
-  categoryOptionText: {
+  pickerItem: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#1F2937',
   },
+  pickerContainer: {
+    // Deprecated, kept for backward compatibility
+    display: 'none',
+  },
+  categoryOption: {
+    // Deprecated, kept for backward compatibility
+    display: 'none',
+  },
+  selectedCategory: {
+    // Deprecated, kept for backward compatibility
+    display: 'none',
+  },
+  categoryOptionText: {
+    // Deprecated, kept for backward compatibility
+    display: 'none',
+  },
   selectedCategoryText: {
-    color: '#0066CC',
-    fontFamily: 'Inter-SemiBold',
+    // Deprecated, kept for backward compatibility
+    display: 'none',
   },
   checkboxContainer: {
     flexDirection: 'row',
@@ -364,5 +540,65 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
+  },
+  imagePickerButton: {
+    backgroundColor: '#0066CC',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  imagePickerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+  },
+  imagePreview: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  // Custom dropdown styles
+  customDropdown: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31,41,55,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '80%',
+    maxHeight: 350,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  modalItemText: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontFamily: 'Inter-Regular',
   },
 });

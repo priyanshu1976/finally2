@@ -10,10 +10,23 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, Eye, EyeOff, Mail, Lock, User, Phone, MapPin, Shield, CircleCheck as CheckCircle } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
+  User,
+  Phone,
+  MapPin,
+  Shield,
+  CircleCheck as CheckCircle,
+  MessageCircle,
+} from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 
 const CITIES = [
@@ -87,24 +100,30 @@ export default function SignupScreen() {
 
   const handleSendOTP = async () => {
     if (!formData.email.trim()) {
-      setErrors(prev => ({ ...prev, email: 'Email is required to send OTP' }));
+      setErrors((prev) => ({
+        ...prev,
+        email: 'Email is required to send OTP',
+      }));
       return;
     }
 
     if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      setErrors(prev => ({ ...prev, email: 'Please enter a valid email' }));
+      setErrors((prev) => ({ ...prev, email: 'Please enter a valid email' }));
       return;
     }
 
     setOtpLoading(true);
-    
+
     try {
       const { error } = await sendOTP(formData.email);
       if (error) {
         Alert.alert('Error', error.message || 'Failed to send OTP');
       } else {
         setOtpSent(true);
-        Alert.alert('OTP Sent', 'Please check your email for the 6-digit verification code.');
+        Alert.alert(
+          'OTP Sent',
+          'Please check your email for the 6-digit verification code.'
+        );
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to send OTP. Please try again.');
@@ -113,21 +132,62 @@ export default function SignupScreen() {
     }
   };
 
-  const handleVerifyOTP = () => {
+  const handleVerifyOTP = async () => {
     if (!formData.code.trim()) {
-      setErrors(prev => ({ ...prev, code: 'Please enter the OTP' }));
+      setErrors((prev) => ({ ...prev, code: 'Please enter the OTP' }));
       return;
     }
 
     if (!/^\d{6}$/.test(formData.code)) {
-      setErrors(prev => ({ ...prev, code: 'Please enter a valid 6-digit OTP' }));
+      setErrors((prev) => ({
+        ...prev,
+        code: 'Please enter a valid 6-digit OTP',
+      }));
       return;
     }
 
-    // For now, we'll mark as verified and let the backend handle verification during signup
-    setOtpVerified(true);
-    setErrors(prev => ({ ...prev, code: '' }));
-    Alert.alert('Success', 'Email verified successfully!');
+    try {
+      // Send request to backend to verify OTP and email
+      const response = await fetch(
+        `${'http://172.16.218.29:3000'}/api/auth/test-verify-otp`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            code: formData.code,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setOtpVerified(false);
+        setErrors((prev) => ({
+          ...prev,
+          code: data?.message || 'OTP verification failed',
+        }));
+        Alert.alert(
+          'Verification Failed',
+          data?.message || 'OTP verification failed'
+        );
+        return;
+      }
+
+      setOtpVerified(true);
+      setErrors((prev) => ({ ...prev, code: '' }));
+      Alert.alert('Success', 'Email verified successfully!');
+    } catch (error) {
+      setOtpVerified(false);
+      setErrors((prev) => ({
+        ...prev,
+        code: 'Failed to verify OTP. Please try again.',
+      }));
+      Alert.alert('Error', 'Failed to verify OTP. Please try again.');
+    }
   };
 
   const handleSignup = async () => {
@@ -136,40 +196,48 @@ export default function SignupScreen() {
     setIsLoading(true);
 
     const { error } = await signUp(
-      formData.email, 
-      formData.password, 
-      formData.name, 
+      formData.email,
+      formData.password,
+      formData.name,
       formData.phone,
       formData.city,
       formData.code
     );
-    
+
     if (error) {
       console.error('Signup failed:', error);
-      
+
       if (error.message?.includes('User already registered')) {
-        Alert.alert('Account Exists', 'An account with this email already exists. Please sign in instead.');
+        Alert.alert(
+          'Account Exists',
+          'An account with this email already exists. Please sign in instead.'
+        );
       } else if (error.message?.includes('Invalid email')) {
         Alert.alert('Invalid Email', 'Please enter a valid email address.');
       } else if (error.message?.includes('Password')) {
-        Alert.alert('Password Error', 'Password must be at least 6 characters long.');
+        Alert.alert(
+          'Password Error',
+          'Password must be at least 6 characters long.'
+        );
       } else if (error.message?.includes('verification')) {
-        Alert.alert('Verification Error', 'Invalid or expired OTP. Please try again.');
+        Alert.alert(
+          'Verification Error',
+          'Invalid or expired OTP. Please try again.'
+        );
         setOtpVerified(false);
       } else {
-        Alert.alert('Signup Failed', error.message || 'Something went wrong. Please try again.');
+        Alert.alert(
+          'Signup Failed',
+          error.message || 'Something went wrong. Please try again.'
+        );
       }
     } else {
-      Alert.alert(
-        'Success', 
-        'Account created successfully! You can now sign in.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/auth/login')
-          }
-        ]
-      );
+      Alert.alert('Success', 'Account created successfully!', [
+        {
+          text: 'OK',
+          onPress: () => router.replace('/(tabs)'),
+        },
+      ]);
     }
 
     setIsLoading(false);
@@ -192,18 +260,34 @@ export default function SignupScreen() {
     return text;
   };
 
-  const selectedCity = CITIES.find(city => city.id === formData.city);
+  const selectedCity = CITIES.find((city) => city.id === formData.city);
+
+  // WhatsApp Contact Handler
+  const handleContactUsWhatsApp = () => {
+    const phoneNumber = '9872117945';
+    const url = `https://wa.me/${phoneNumber}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Unable to open WhatsApp. Please try again.');
+    });
+  };
+
+  // Helper to check if selected city is outside tricity
+  const isOutsideTricity =
+    formData.city && !CITIES.some((city) => city.id === formData.city);
 
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardAvoid}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.header}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.backButton}
                 onPress={() => router.back()}
               >
@@ -214,13 +298,20 @@ export default function SignupScreen() {
             <View style={styles.content}>
               <View style={styles.titleContainer}>
                 <Text style={styles.title}>Create Account</Text>
-                <Text style={styles.subtitle}>Join Mitttal and Co. family today</Text>
+                <Text style={styles.subtitle}>
+                  Join Mitttal and Co. family today
+                </Text>
               </View>
 
               <View style={styles.formContainer}>
                 {/* Name Input */}
                 <View style={styles.inputContainer}>
-                  <View style={[styles.inputWrapper, errors.name && styles.inputError]}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      errors.name && styles.inputError,
+                    ]}
+                  >
                     <User size={20} color="#9b9591" style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
@@ -228,19 +319,26 @@ export default function SignupScreen() {
                       placeholderTextColor="#9b9591"
                       value={formData.name}
                       onChangeText={(text) => {
-                        setFormData(prev => ({ ...prev, name: text }));
+                        setFormData((prev) => ({ ...prev, name: text }));
                         clearError('name');
                       }}
                       autoCapitalize="words"
                       autoComplete="name"
                     />
                   </View>
-                  {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+                  {errors.name && (
+                    <Text style={styles.errorText}>{errors.name}</Text>
+                  )}
                 </View>
 
                 {/* Phone Input */}
                 <View style={styles.inputContainer}>
-                  <View style={[styles.inputWrapper, errors.phone && styles.inputError]}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      errors.phone && styles.inputError,
+                    ]}
+                  >
                     <Phone size={20} color="#9b9591" style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
@@ -250,7 +348,10 @@ export default function SignupScreen() {
                       onChangeText={(text) => {
                         const formatted = formatPhoneNumber(text);
                         if (formatted.replace(/\s/g, '').length <= 10) {
-                          setFormData(prev => ({ ...prev, phone: formatted }));
+                          setFormData((prev) => ({
+                            ...prev,
+                            phone: formatted,
+                          }));
                           clearError('phone');
                         }
                       }}
@@ -258,12 +359,19 @@ export default function SignupScreen() {
                       autoComplete="tel"
                     />
                   </View>
-                  {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
+                  {errors.phone && (
+                    <Text style={styles.errorText}>{errors.phone}</Text>
+                  )}
                 </View>
 
                 {/* Email Input with OTP */}
                 <View style={styles.inputContainer}>
-                  <View style={[styles.inputWrapper, errors.email && styles.inputError]}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      errors.email && styles.inputError,
+                    ]}
+                  >
                     <Mail size={20} color="#9b9591" style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
@@ -271,7 +379,7 @@ export default function SignupScreen() {
                       placeholderTextColor="#9b9591"
                       value={formData.email}
                       onChangeText={(text) => {
-                        setFormData(prev => ({ ...prev, email: text }));
+                        setFormData((prev) => ({ ...prev, email: text }));
                         clearError('email');
                         setOtpSent(false);
                         setOtpVerified(false);
@@ -281,24 +389,36 @@ export default function SignupScreen() {
                       autoComplete="email"
                     />
                     {otpVerified && (
-                      <CheckCircle size={20} color="#c6aa55" style={styles.verifiedIcon} />
+                      <CheckCircle
+                        size={20}
+                        color="#c6aa55"
+                        style={styles.verifiedIcon}
+                      />
                     )}
                   </View>
-                  {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-                  
+                  {errors.email && (
+                    <Text style={styles.errorText}>{errors.email}</Text>
+                  )}
+
                   {/* OTP Button */}
                   <TouchableOpacity
                     style={[
                       styles.otpButton,
                       otpSent && styles.otpButtonSent,
-                      otpVerified && styles.otpButtonVerified
+                      otpVerified && styles.otpButtonVerified,
                     ]}
                     onPress={handleSendOTP}
                     disabled={otpLoading || otpVerified}
                   >
                     <Shield size={16} color="#ffffff" />
                     <Text style={styles.otpButtonText}>
-                      {otpLoading ? 'Sending...' : otpVerified ? 'Verified' : otpSent ? 'Resend OTP' : 'Send OTP'}
+                      {otpLoading
+                        ? 'Sending...'
+                        : otpVerified
+                        ? 'Verified'
+                        : otpSent
+                        ? 'Resend OTP'
+                        : 'Send OTP'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -306,8 +426,17 @@ export default function SignupScreen() {
                 {/* OTP Input */}
                 {otpSent && !otpVerified && (
                   <View style={styles.inputContainer}>
-                    <View style={[styles.inputWrapper, errors.code && styles.inputError]}>
-                      <Shield size={20} color="#9b9591" style={styles.inputIcon} />
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        errors.code && styles.inputError,
+                      ]}
+                    >
+                      <Shield
+                        size={20}
+                        color="#9b9591"
+                        style={styles.inputIcon}
+                      />
                       <TextInput
                         style={styles.input}
                         placeholder="Enter 6-digit OTP"
@@ -315,7 +444,7 @@ export default function SignupScreen() {
                         value={formData.code}
                         onChangeText={(text) => {
                           if (/^\d{0,6}$/.test(text)) {
-                            setFormData(prev => ({ ...prev, code: text }));
+                            setFormData((prev) => ({ ...prev, code: text }));
                             clearError('code');
                           }
                         }}
@@ -329,32 +458,82 @@ export default function SignupScreen() {
                         <Text style={styles.verifyButtonText}>Verify</Text>
                       </TouchableOpacity>
                     </View>
-                    {errors.code && <Text style={styles.errorText}>{errors.code}</Text>}
-                    <Text style={styles.otpHint}>Demo: Use any 6-digit code</Text>
+                    {errors.code && (
+                      <Text style={styles.errorText}>{errors.code}</Text>
+                    )}
+                    <Text style={styles.otpHint}>
+                      Demo: Use any 6-digit code
+                    </Text>
                   </View>
                 )}
 
                 {/* City Selection */}
                 <View style={styles.inputContainer}>
                   <TouchableOpacity
-                    style={[styles.inputWrapper, errors.city && styles.inputError]}
+                    style={[
+                      styles.inputWrapper,
+                      errors.city && styles.inputError,
+                    ]}
                     onPress={() => setShowCityModal(true)}
                   >
-                    <MapPin size={20} color="#9b9591" style={styles.inputIcon} />
-                    <Text style={[
-                      styles.cityText,
-                      !selectedCity && styles.placeholderText
-                    ]}>
+                    <MapPin
+                      size={20}
+                      color="#9b9591"
+                      style={styles.inputIcon}
+                    />
+                    <Text
+                      style={[
+                        styles.cityText,
+                        !selectedCity && styles.placeholderText,
+                      ]}
+                    >
                       {selectedCity ? selectedCity.name : 'Select Your City'}
                     </Text>
-                    <ArrowLeft size={16} color="#9b9591" style={styles.dropdownIcon} />
+                    <ArrowLeft
+                      size={16}
+                      color="#9b9591"
+                      style={styles.dropdownIcon}
+                    />
                   </TouchableOpacity>
-                  {errors.city && <Text style={styles.errorText}>{errors.city}</Text>}
+                  {errors.city && (
+                    <Text style={styles.errorText}>{errors.city}</Text>
+                  )}
+
+                  {/* Section: Not within tricity? Contact us */}
+                  {formData.city &&
+                    !CITIES.some((city) => city.id === formData.city) && (
+                      <View style={styles.outsideTricityContainer}>
+                        <Text style={styles.outsideTricityText}>
+                          Not within Tricity?{' '}
+                          <Text style={styles.outsideTricityBold}>
+                            Contact us
+                          </Text>
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.contactUsButton}
+                          onPress={handleContactUsWhatsApp}
+                        >
+                          <MessageCircle
+                            size={18}
+                            color="#25D366"
+                            style={{ marginRight: 6 }}
+                          />
+                          <Text style={styles.contactUsButtonText}>
+                            Contact us on WhatsApp
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                 </View>
 
                 {/* Password Input */}
                 <View style={styles.inputContainer}>
-                  <View style={[styles.inputWrapper, errors.password && styles.inputError]}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      errors.password && styles.inputError,
+                    ]}
+                  >
                     <Lock size={20} color="#9b9591" style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
@@ -362,7 +541,7 @@ export default function SignupScreen() {
                       placeholderTextColor="#9b9591"
                       value={formData.password}
                       onChangeText={(text) => {
-                        setFormData(prev => ({ ...prev, password: text }));
+                        setFormData((prev) => ({ ...prev, password: text }));
                         clearError('password');
                       }}
                       secureTextEntry={!showPassword}
@@ -379,12 +558,19 @@ export default function SignupScreen() {
                       )}
                     </TouchableOpacity>
                   </View>
-                  {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+                  {errors.password && (
+                    <Text style={styles.errorText}>{errors.password}</Text>
+                  )}
                 </View>
 
                 {/* Confirm Password Input */}
                 <View style={styles.inputContainer}>
-                  <View style={[styles.inputWrapper, errors.confirmPassword && styles.inputError]}>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      errors.confirmPassword && styles.inputError,
+                    ]}
+                  >
                     <Lock size={20} color="#9b9591" style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
@@ -392,7 +578,10 @@ export default function SignupScreen() {
                       placeholderTextColor="#9b9591"
                       value={formData.confirmPassword}
                       onChangeText={(text) => {
-                        setFormData(prev => ({ ...prev, confirmPassword: text }));
+                        setFormData((prev) => ({
+                          ...prev,
+                          confirmPassword: text,
+                        }));
                         clearError('confirmPassword');
                       }}
                       secureTextEntry={!showConfirmPassword}
@@ -400,7 +589,9 @@ export default function SignupScreen() {
                     />
                     <TouchableOpacity
                       style={styles.eyeButton}
-                      onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                      onPress={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
                     >
                       {showConfirmPassword ? (
                         <EyeOff size={20} color="#9b9591" />
@@ -409,22 +600,28 @@ export default function SignupScreen() {
                       )}
                     </TouchableOpacity>
                   </View>
-                  {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
+                  {errors.confirmPassword && (
+                    <Text style={styles.errorText}>
+                      {errors.confirmPassword}
+                    </Text>
+                  )}
                 </View>
 
                 {/* Terms and Conditions */}
                 <View style={styles.termsContainer}>
                   <Text style={styles.termsText}>
                     By creating an account, you agree to our{' '}
-                    <Text style={styles.termsLink}>Terms of Service</Text>
-                    {' '}and{' '}
+                    <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
                     <Text style={styles.termsLink}>Privacy Policy</Text>
                   </Text>
                 </View>
 
                 {/* Signup Button */}
                 <TouchableOpacity
-                  style={[styles.signupButton, isLoading && styles.signupButtonDisabled]}
+                  style={[
+                    styles.signupButton,
+                    isLoading && styles.signupButtonDisabled,
+                  ]}
                   onPress={handleSignup}
                   disabled={isLoading}
                 >
@@ -435,7 +632,9 @@ export default function SignupScreen() {
 
                 {/* Login Link */}
                 <View style={styles.loginContainer}>
-                  <Text style={styles.loginText}>Already have an account? </Text>
+                  <Text style={styles.loginText}>
+                    Already have an account?{' '}
+                  </Text>
                   <TouchableOpacity onPress={() => router.push('/auth/login')}>
                     <Text style={styles.loginLink}>Sign In</Text>
                   </TouchableOpacity>
@@ -469,19 +668,24 @@ export default function SignupScreen() {
                 key={city.id}
                 style={[
                   styles.cityOption,
-                  formData.city === city.id && styles.cityOptionSelected
+                  formData.city === city.id && styles.cityOptionSelected,
                 ]}
                 onPress={() => {
-                  setFormData(prev => ({ ...prev, city: city.id }));
+                  setFormData((prev) => ({ ...prev, city: city.id }));
                   clearError('city');
                   setShowCityModal(false);
                 }}
               >
-                <MapPin size={20} color={formData.city === city.id ? '#c6aa55' : '#9b9591'} />
-                <Text style={[
-                  styles.cityOptionText,
-                  formData.city === city.id && styles.cityOptionTextSelected
-                ]}>
+                <MapPin
+                  size={20}
+                  color={formData.city === city.id ? '#c6aa55' : '#9b9591'}
+                />
+                <Text
+                  style={[
+                    styles.cityOptionText,
+                    formData.city === city.id && styles.cityOptionTextSelected,
+                  ]}
+                >
                   {city.name}
                 </Text>
                 {formData.city === city.id && (
@@ -489,6 +693,34 @@ export default function SignupScreen() {
                 )}
               </TouchableOpacity>
             ))}
+            {/* Option for users not in tricity */}
+            <TouchableOpacity
+              style={[
+                styles.cityOption,
+                formData.city === 'other' && styles.cityOptionSelected,
+              ]}
+              onPress={() => {
+                setFormData((prev) => ({ ...prev, city: 'other' }));
+                clearError('city');
+                setShowCityModal(false);
+              }}
+            >
+              <MapPin
+                size={20}
+                color={formData.city === 'other' ? '#c6aa55' : '#9b9591'}
+              />
+              <Text
+                style={[
+                  styles.cityOptionText,
+                  formData.city === 'other' && styles.cityOptionTextSelected,
+                ]}
+              >
+                Not within Tricity?
+              </Text>
+              {formData.city === 'other' && (
+                <CheckCircle size={20} color="#c6aa55" />
+              )}
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
       </Modal>
@@ -635,6 +867,42 @@ const styles = StyleSheet.create({
   },
   dropdownIcon: {
     transform: [{ rotate: '-90deg' }],
+  },
+  // New styles for outside tricity contact section
+  outsideTricityContainer: {
+    marginTop: 12,
+    backgroundColor: '#fffbe6',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#c6aa55',
+    alignItems: 'center',
+  },
+  outsideTricityText: {
+    fontSize: 15,
+    color: '#2e3f47',
+    fontFamily: 'Inter-Regular',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  outsideTricityBold: {
+    fontFamily: 'Inter-SemiBold',
+    color: '#c6aa55',
+  },
+  contactUsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e7e0d0',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#25D366',
+  },
+  contactUsButtonText: {
+    color: '#25D366',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
   },
   termsContainer: {
     marginBottom: 24,

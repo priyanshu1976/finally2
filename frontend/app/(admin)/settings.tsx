@@ -9,28 +9,31 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { User, Shield, Bell, CircleHelp as HelpCircle, LogOut, ChevronRight } from 'lucide-react-native';
+import {
+  User,
+  Shield,
+  Bell,
+  CircleHelp as HelpCircle,
+  LogOut,
+  ChevronRight,
+} from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminSettingsScreen() {
   const { user, signOut } = useAuth();
 
   const handleLogout = () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
-          style: 'destructive', 
-          onPress: async () => {
-            await signOut();
-            router.replace('/');
-          }
-        }
-      ]
-    );
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/auth/login');
+        },
+      },
+    ]);
   };
 
   const settingsSections = [
@@ -121,7 +124,9 @@ export default function AdminSettingsScreen() {
           <View key={sectionIndex} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             <View style={styles.sectionContent}>
-              {section.items.map((item, itemIndex) => renderMenuItem(item, itemIndex))}
+              {section.items.map((item, itemIndex) =>
+                renderMenuItem(item, itemIndex)
+              )}
             </View>
           </View>
         ))}
@@ -138,7 +143,9 @@ export default function AdminSettingsScreen() {
                   <LogOut size={20} color="#EF4444" />
                 </View>
                 <View style={styles.menuText}>
-                  <Text style={[styles.menuTitle, styles.logoutText]}>Sign Out</Text>
+                  <Text style={[styles.menuTitle, styles.logoutText]}>
+                    Sign Out
+                  </Text>
                 </View>
               </View>
             </TouchableOpacity>

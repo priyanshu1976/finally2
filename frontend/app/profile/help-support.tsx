@@ -117,7 +117,7 @@ export default function HelpSupportScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Company Info */}
         <View style={styles.companySection}>
-          <Text style={styles.sectionTitle}>Mittal and Co.</Text>
+          <Text style={styles.sectionTitle}>Verma & Company</Text>
           <Text style={styles.companyDescription}>
             Your trusted partner for all sanitary and plumbing needs. We provide
             quality products and excellent service to make your home better.
@@ -127,7 +127,7 @@ export default function HelpSupportScreen() {
         {/* Contact Methods */}
         <View style={styles.contactSection}>
           <Text style={styles.sectionTitle}>Contact Us</Text>
-          {renderContactCard(Phone, 'Call Us', '+91 98765 43210', () =>
+          {renderContactCard(Phone, 'Call Us', '+91 98721 17945', () =>
             handleContact('phone')
           )}
           {renderContactCard(Mail, 'Email Us', 'support@mittalandco.com', () =>
