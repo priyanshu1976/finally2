@@ -92,8 +92,12 @@ export default function CheckoutScreen() {
         //@ts-ignore
         setAddresses(response.data.addresses);
         // Auto-select first address if available
-        if (response.data.length > 0 && !selectedAddress) {
-          setSelectedAddress(response.data[0]);
+        if (
+          response.data.addresses &&
+          response.data.addresses.length > 0 &&
+          !selectedAddress
+        ) {
+          setSelectedAddress(response.data.addresses[0]);
         }
       }
     } catch (error) {
@@ -208,6 +212,8 @@ export default function CheckoutScreen() {
   };
 
   const handlePlaceOrder = async () => {
+    // Remove the disabled check for !selectedAddress, and check inside the function
+    if (isLoading) return;
     if (!user) {
       Alert.alert('Error', 'Please login to place an order');
       return;
@@ -238,6 +244,7 @@ export default function CheckoutScreen() {
       };
 
       const response = await orderService.createOrder(orderData);
+      console.log(response, 'this is the create order response');
 
       if (response.success) {
         clearCart();
@@ -452,9 +459,11 @@ export default function CheckoutScreen() {
           style={[
             styles.placeOrderButton,
             isLoading && styles.placeOrderButtonDisabled,
+            // Remove disabling style if not needed
           ]}
           onPress={handlePlaceOrder}
-          disabled={isLoading || !selectedAddress}
+          // Only disable if loading, not if !selectedAddress
+          disabled={isLoading}
         >
           <Text style={styles.placeOrderText}>
             {isLoading ? 'Placing Order...' : 'Place Order'}

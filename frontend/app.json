@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Mitttal and Co.",
+    "name": "VermaAndCompany",
     "slug": "mitttal-and-co",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -49,6 +49,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "aaffba27-385a-4b34-8666-14733147c34d"
+      }
     }
   }
 }
