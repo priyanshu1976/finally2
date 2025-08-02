@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,25 +6,20 @@ import {
   Image,
   TouchableOpacity,
   Dimensions,
+  Animated,
+  Easing,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSequence,
-  withSpring,
-} from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const { user, isLoading } = useAuth();
-  const logoScale = useSharedValue(0);
-  const titleOpacity = useSharedValue(0);
-  const buttonOpacity = useSharedValue(0);
-  const floatingElements = useSharedValue(0);
+  const logoScale = useRef(new Animated.Value(0)).current;
+  const titleOpacity = useRef(new Animated.Value(0)).current;
+  const buttonOpacity = useRef(new Animated.Value(0)).current;
+  const floatingElements = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!isLoading) {
@@ -37,35 +32,40 @@ export default function WelcomeScreen() {
         }
       } else {
         // Start animations for welcome screen
-        logoScale.value = withSequence(
-          withTiming(1.2, { duration: 600 }),
-          withSpring(1, { damping: 8, stiffness: 100 })
-        );
-        titleOpacity.value = withTiming(1, { duration: 800 });
-        buttonOpacity.value = withTiming(1, { duration: 1000 });
-        floatingElements.value = withTiming(1, { duration: 1200 });
+        Animated.sequence([
+          Animated.timing(logoScale, {
+            toValue: 1.2,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.spring(logoScale, {
+            toValue: 1,
+            tension: 100,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        Animated.timing(titleOpacity, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }).start();
+
+        Animated.timing(buttonOpacity, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }).start();
+
+        Animated.timing(floatingElements, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }).start();
       }
     }
   }, [user, isLoading]);
-
-  const logoAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: logoScale.value }],
-  }));
-
-  const titleAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: titleOpacity.value,
-    transform: [{ translateY: withTiming(titleOpacity.value === 1 ? 0 : 30) }],
-  }));
-
-  const buttonAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: buttonOpacity.value,
-    transform: [{ translateY: withTiming(buttonOpacity.value === 1 ? 0 : 50) }],
-  }));
-
-  const floatingAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: floatingElements.value,
-    transform: [{ scale: floatingElements.value }],
-  }));
 
   // Show loading screen while checking authentication
   if (isLoading) {
@@ -92,12 +92,43 @@ export default function WelcomeScreen() {
   return (
     <View style={styles.container}>
       {/* Floating Background Elements */}
-      <Animated.View style={[styles.floatingElement1, floatingAnimatedStyle]} />
-      <Animated.View style={[styles.floatingElement2, floatingAnimatedStyle]} />
-      <Animated.View style={[styles.floatingElement3, floatingAnimatedStyle]} />
+      <Animated.View
+        style={[
+          styles.floatingElement1,
+          {
+            opacity: floatingElements,
+            transform: [{ scale: floatingElements }],
+          },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.floatingElement2,
+          {
+            opacity: floatingElements,
+            transform: [{ scale: floatingElements }],
+          },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.floatingElement3,
+          {
+            opacity: floatingElements,
+            transform: [{ scale: floatingElements }],
+          },
+        ]}
+      />
 
       <View style={styles.content}>
-        <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
+        <Animated.View
+          style={[
+            styles.logoContainer,
+            {
+              transform: [{ scale: logoScale }],
+            },
+          ]}
+        >
           <View style={styles.logoBackground}>
             <Image
               source={{
@@ -109,7 +140,22 @@ export default function WelcomeScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View style={[styles.titleContainer, titleAnimatedStyle]}>
+        <Animated.View
+          style={[
+            styles.titleContainer,
+            {
+              opacity: titleOpacity,
+              transform: [
+                {
+                  translateY: titleOpacity.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [30, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           <Text style={styles.title}>Verma & Company</Text>
           <View style={styles.subtitleContainer}>
             <View style={styles.accentLine} />
@@ -122,7 +168,22 @@ export default function WelcomeScreen() {
           </Text>
         </Animated.View>
 
-        <Animated.View style={[styles.buttonContainer, buttonAnimatedStyle]}>
+        <Animated.View
+          style={[
+            styles.buttonContainer,
+            {
+              opacity: buttonOpacity,
+              transform: [
+                {
+                  translateY: buttonOpacity.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [50, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           <TouchableOpacity
             style={styles.loginButton}
             onPress={() => router.push('/auth/login')}

@@ -1,37 +1,41 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { CircleCheck as CheckCircle, Package, Chrome as Home } from 'lucide-react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence } from 'react-native-reanimated';
 
 export default function OrderSuccessScreen() {
-  const checkScale = useSharedValue(0);
-  const contentOpacity = useSharedValue(0);
+  const checkScale = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Animate check mark
-    checkScale.value = withSequence(
-      withTiming(1.2, { duration: 400 }),
-      withTiming(1, { duration: 200 })
-    );
+    Animated.sequence([
+      Animated.timing(checkScale, {
+        toValue: 1.2,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(checkScale, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
     
     // Animate content
-    contentOpacity.value = withTiming(1, { duration: 600 });
+    Animated.timing(contentOpacity, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
   }, []);
-
-  const checkAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: checkScale.value }]
-  }));
-
-  const contentAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value
-  }));
 
   const orderNumber = 'ORD' + Math.random().toString().substr(2, 6);
   const estimatedDelivery = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString();
@@ -39,11 +43,21 @@ export default function OrderSuccessScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Animated.View style={[styles.successIcon, checkAnimatedStyle]}>
+        <Animated.View 
+          style={[
+            styles.successIcon, 
+            { transform: [{ scale: checkScale }] }
+          ]}
+        >
           <CheckCircle size={80} color="#10B981" />
         </Animated.View>
 
-        <Animated.View style={[styles.textContainer, contentAnimatedStyle]}>
+        <Animated.View 
+          style={[
+            styles.textContainer, 
+            { opacity: contentOpacity }
+          ]}
+        >
           <Text style={styles.title}>Order Placed Successfully!</Text>
           <Text style={styles.subtitle}>
             Thank you for your purchase. Your order has been confirmed.
@@ -72,7 +86,12 @@ export default function OrderSuccessScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View style={[styles.buttonContainer, contentAnimatedStyle]}>
+        <Animated.View 
+          style={[
+            styles.buttonContainer, 
+            { opacity: contentOpacity }
+          ]}
+        >
           <TouchableOpacity
             style={styles.trackButton}
             onPress={() => router.push('/(tabs)/orders')}
