@@ -888,3 +888,7 @@ const styles = StyleSheet.create({
     color: '#9b9591',
   },
 });
+
+// todo setup android studio 
+// todo npx prebuild 
+// todo npm run android
